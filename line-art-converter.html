@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>선화 변환기 · LineTrace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@300;400;600&family=Cormorant+Garamond:ital,wght@0,300;0,500;1,300&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --ink: #1a1208;
+    --paper: #f5f0e8;
+    --sepia: #c8a96e;
+    --faint: #e8e0d0;
+    --accent: #8b5e3c;
+    --soft: #d4c9b0;
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Noto Serif KR', serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grain texture overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 1000; opacity: 0.6;
+  }
+
+  header {
+    padding: 3rem 4rem 2rem;
+    display: flex; align-items: baseline; gap: 1.5rem;
+    border-bottom: 1px solid var(--soft);
+  }
+
+  .logo {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 2.2rem;
+    font-weight: 300;
+    font-style: italic;
+    color: var(--ink);
+    letter-spacing: 0.02em;
+  }
+
+  .logo span {
+    color: var(--accent);
+  }
+
+  .tagline {
+    font-size: 0.75rem;
+    font-weight: 300;
+    color: var(--sepia);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+
+  main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 3rem 2rem 5rem;
+  }
+
+  /* Upload Zone */
+  .upload-zone {
+    border: 1.5px dashed var(--sepia);
+    border-radius: 2px;
+    padding: 4rem 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: linear-gradient(135deg, rgba(200,169,110,0.04), transparent);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .upload-zone::before {
+    content: '';
+    position: absolute; inset: 6px;
+    border: 1px solid rgba(200,169,110,0.2);
+    border-radius: 1px;
+    pointer-events: none;
+  }
+
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(139,94,60,0.04);
+  }
+
+  .upload-icon {
+    width: 56px; height: 56px;
+    margin: 0 auto 1.5rem;
+    opacity: 0.4;
+  }
+
+  .upload-text-main {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.4rem;
+    font-weight: 300;
+    color: var(--ink);
+    margin-bottom: 0.5rem;
+  }
+
+  .upload-text-sub {
+    font-size: 0.75rem;
+    color: var(--sepia);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  #fileInput { display: none; }
+
+  /* Controls */
+  .controls {
+    display: none;
+    margin: 2.5rem 0;
+    background: white;
+    border: 1px solid var(--faint);
+    border-radius: 2px;
+    padding: 2rem;
+  }
+
+  .controls.visible { display: block; }
+
+  .controls-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 0.85rem;
+    font-weight: 500;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--sepia);
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--faint);
+  }
+
+  .control-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem 2.5rem;
+  }
+
+  .control-item label {
+    display: block;
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 0.6rem;
+  }
+
+  .slider-wrap {
+    display: flex; align-items: center; gap: 1rem;
+  }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    flex: 1; height: 2px;
+    background: var(--soft);
+    outline: none; cursor: pointer;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    box-shadow: 0 0 0 3px rgba(139,94,60,0.15);
+    transition: box-shadow 0.2s;
+  }
+
+  input[type=range]::-webkit-slider-thumb:hover {
+    box-shadow: 0 0 0 5px rgba(139,94,60,0.2);
+  }
+
+  .slider-val {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1rem;
+    color: var(--ink);
+    min-width: 2.5rem;
+    text-align: right;
+  }
+
+  /* Style Buttons */
+  .style-options {
+    display: flex; gap: 0.75rem; flex-wrap: wrap;
+  }
+
+  .style-btn {
+    padding: 0.4rem 1rem;
+    border: 1px solid var(--soft);
+    background: transparent;
+    font-family: 'Noto Serif KR', serif;
+    font-size: 0.75rem;
+    color: var(--ink);
+    cursor: pointer;
+    border-radius: 1px;
+    letter-spacing: 0.05em;
+    transition: all 0.2s;
+  }
+
+  .style-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .style-btn.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+  /* Canvas Area */
+  .canvas-area {
+    display: none;
+    gap: 2rem;
+    margin-top: 1rem;
+  }
+
+  .canvas-area.visible { display: grid; grid-template-columns: 1fr 1fr; }
+
+  @media (max-width: 700px) {
+    .canvas-area.visible { grid-template-columns: 1fr; }
+    header { padding: 2rem; }
+  }
+
+  .canvas-panel {
+    display: flex; flex-direction: column; gap: 0.75rem;
+  }
+
+  .panel-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--sepia);
+  }
+
+  .canvas-frame {
+    border: 1px solid var(--faint);
+    background: white;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 300px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .canvas-frame canvas, .canvas-frame img {
+    max-width: 100%; max-height: 500px;
+    display: block;
+    object-fit: contain;
+  }
+
+  /* Processing overlay */
+  .processing-overlay {
+    display: none;
+    position: absolute; inset: 0;
+    background: rgba(245,240,232,0.9);
+    align-items: center; justify-content: center;
+    flex-direction: column; gap: 1rem;
+    z-index: 10;
+  }
+
+  .processing-overlay.active { display: flex; }
+
+  .spinner {
+    width: 36px; height: 36px;
+    border: 2px solid var(--faint);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .processing-text {
+    font-size: 0.72rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--sepia);
+  }
+
+  /* Action Buttons */
+  .actions {
+    display: none;
+    gap: 1rem; margin-top: 2rem; justify-content: center; flex-wrap: wrap;
+  }
+
+  .actions.visible { display: flex; }
+
+  .btn {
+    padding: 0.75rem 2rem;
+    border: 1px solid var(--ink);
+    background: transparent;
+    font-family: 'Noto Serif KR', serif;
+    font-size: 0.8rem;
+    color: var(--ink);
+    cursor: pointer;
+    letter-spacing: 0.1em;
+    transition: all 0.25s ease;
+    border-radius: 1px;
+  }
+
+  .btn:hover { background: var(--ink); color: var(--paper); }
+
+  .btn-primary {
+    background: var(--ink);
+    color: var(--paper);
+  }
+
+  .btn-primary:hover { background: var(--accent); border-color: var(--accent); }
+
+  .btn-new { border-color: var(--soft); color: var(--sepia); }
+  .btn-new:hover { border-color: var(--accent); color: var(--accent); background: transparent; }
+
+  /* Decorative corner marks */
+  .corner-deco {
+    position: fixed;
+    width: 60px; height: 60px;
+    opacity: 0.12;
+  }
+  .corner-deco.tl { top: 1rem; left: 1rem; border-top: 1px solid var(--ink); border-left: 1px solid var(--ink); }
+  .corner-deco.br { bottom: 1rem; right: 1rem; border-bottom: 1px solid var(--ink); border-right: 1px solid var(--ink); }
+</style>
+</head>
+<body>
+
+<div class="corner-deco tl"></div>
+<div class="corner-deco br"></div>
+
+<header>
+  <div class="logo">Line<span>Trace</span></div>
+  <div class="tagline">이미지 → 선화 변환기</div>
+</header>
+
+<main>
+  <!-- Upload Zone -->
+  <div class="upload-zone" id="uploadZone">
+    <input type="file" id="fileInput" accept="image/*">
+    <svg class="upload-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.2">
+      <rect x="6" y="8" width="36" height="32" rx="2"/>
+      <circle cx="18" cy="20" r="4"/>
+      <path d="M6 34 l10-10 8 8 6-6 12 10"/>
+      <path d="M24 6 v8 M20 9 l4-4 4 4" stroke-linecap="round"/>
+    </svg>
+    <div class="upload-text-main">이미지를 드래그하거나 클릭하세요</div>
+    <div class="upload-text-sub">JPG · PNG · WEBP 지원</div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls" id="controls">
+    <div class="controls-title">변환 설정</div>
+    <div class="control-grid">
+      <div class="control-item">
+        <label>선 강도 (Threshold)</label>
+        <div class="slider-wrap">
+          <input type="range" id="threshold" min="10" max="200" value="60">
+          <span class="slider-val" id="thresholdVal">60</span>
+        </div>
+      </div>
+      <div class="control-item">
+        <label>선 굵기 (Blur)</label>
+        <div class="slider-wrap">
+          <input type="range" id="blur" min="0" max="5" value="1" step="0.5">
+          <span class="slider-val" id="blurVal">1</span>
+        </div>
+      </div>
+      <div class="control-item">
+        <label>선화 스타일</label>
+        <div class="style-options">
+          <button class="style-btn active" data-style="classic">고전</button>
+          <button class="style-btn" data-style="sketch">스케치</button>
+          <button class="style-btn" data-style="soft">부드럽게</button>
+          <button class="style-btn" data-style="bold">진하게</button>
+        </div>
+      </div>
+      <div class="control-item">
+        <label>배경색</label>
+        <div class="style-options">
+          <button class="style-btn active" data-bg="white">흰색</button>
+          <button class="style-btn" data-bg="paper">종이</button>
+          <button class="style-btn" data-bg="black">검정</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Canvas Area -->
+  <div class="canvas-area" id="canvasArea">
+    <div class="canvas-panel">
+      <div class="panel-label">원본</div>
+      <div class="canvas-frame">
+        <img id="originalImg" src="" alt="원본 이미지">
+      </div>
+    </div>
+    <div class="canvas-panel">
+      <div class="panel-label">선화</div>
+      <div class="canvas-frame">
+        <canvas id="outputCanvas"></canvas>
+        <div class="processing-overlay" id="processingOverlay">
+          <div class="spinner"></div>
+          <div class="processing-text">변환 중...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="actions" id="actions">
+    <button class="btn btn-primary" id="downloadBtn">선화 저장 (PNG)</button>
+    <button class="btn" id="downloadBgBtn">배경 포함 저장</button>
+    <button class="btn btn-new" id="newBtn">새 이미지</button>
+  </div>
+</main>
+
+<canvas id="workCanvas" style="display:none"></canvas>
+
+<script>
+  const uploadZone = document.getElementById('uploadZone');
+  const fileInput = document.getElementById('fileInput');
+  const controls = document.getElementById('controls');
+  const canvasArea = document.getElementById('canvasArea');
+  const actions = document.getElementById('actions');
+  const originalImg = document.getElementById('originalImg');
+  const outputCanvas = document.getElementById('outputCanvas');
+  const workCanvas = document.getElementById('workCanvas');
+  const processingOverlay = document.getElementById('processingOverlay');
+
+  let currentStyle = 'classic';
+  let currentBg = 'white';
+  let loadedImage = null;
+
+  // Upload events
+  uploadZone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', e => loadImage(e.target.files[0]));
+
+  uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+  uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+  uploadZone.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadZone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) loadImage(file);
+  });
+
+  function loadImage(file) {
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      loadedImage = img;
+      originalImg.src = url;
+      controls.classList.add('visible');
+      canvasArea.classList.add('visible');
+      actions.classList.add('visible');
+      convertToLineArt();
+    };
+    img.src = url;
+  }
+
+  // Sliders
+  const thresholdSlider = document.getElementById('threshold');
+  const blurSlider = document.getElementById('blur');
+
+  thresholdSlider.addEventListener('input', () => {
+    document.getElementById('thresholdVal').textContent = thresholdSlider.value;
+    if (loadedImage) convertToLineArt();
+  });
+  blurSlider.addEventListener('input', () => {
+    document.getElementById('blurVal').textContent = blurSlider.value;
+    if (loadedImage) convertToLineArt();
+  });
+
+  // Style buttons
+  document.querySelectorAll('.style-btn[data-style]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.style-btn[data-style]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentStyle = btn.dataset.style;
+      if (loadedImage) convertToLineArt();
+    });
+  });
+
+  document.querySelectorAll('.style-btn[data-bg]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.style-btn[data-bg]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentBg = btn.dataset.bg;
+      if (loadedImage) convertToLineArt();
+    });
+  });
+
+  // Style presets
+  function getStyleParams() {
+    const base = { threshold: parseInt(thresholdSlider.value), blur: parseFloat(blurSlider.value) };
+    switch(currentStyle) {
+      case 'sketch':   return { ...base, invert: false, contrast: 1.4, noise: true };
+      case 'soft':     return { ...base, threshold: base.threshold * 1.4, blur: base.blur + 1, invert: false };
+      case 'bold':     return { ...base, threshold: base.threshold * 0.6, blur: Math.max(0, base.blur - 0.5), invert: false };
+      default:         return { ...base, invert: false, contrast: 1.2 };
+    }
+  }
+
+  function getBgColor() {
+    switch(currentBg) {
+      case 'paper': return { r: 245, g: 240, b: 232 };
+      case 'black': return { r: 10, g: 10, b: 10 };
+      default:      return { r: 255, g: 255, b: 255 };
+    }
+  }
+
+  let debounceTimer = null;
+  function convertToLineArt() {
+    clearTimeout(debounceTimer);
+    processingOverlay.classList.add('active');
+    debounceTimer = setTimeout(() => {
+      requestAnimationFrame(() => { doConvert(); processingOverlay.classList.remove('active'); });
+    }, 120);
+  }
+
+  function doConvert() {
+    const img = loadedImage;
+    const params = getStyleParams();
+    const bg = getBgColor();
+
+    const maxW = 1200, maxH = 1200;
+    let w = img.naturalWidth, h = img.naturalHeight;
+    if (w > maxW) { h = h * maxW / w; w = maxW; }
+    if (h > maxH) { w = w * maxH / h; h = maxH; }
+    w = Math.round(w); h = Math.round(h);
+
+    workCanvas.width = w; workCanvas.height = h;
+    outputCanvas.width = w; outputCanvas.height = h;
+
+    const wCtx = workCanvas.getContext('2d');
+    // Apply blur if needed
+    if (params.blur > 0) {
+      wCtx.filter = `blur(${params.blur}px)`;
+    }
+    wCtx.drawImage(img, 0, 0, w, h);
+    wCtx.filter = 'none';
+
+    const src = wCtx.getImageData(0, 0, w, h);
+    const data = src.data;
+
+    // Convert to grayscale
+    const gray = new Float32Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+      const r = data[i*4], g = data[i*4+1], b = data[i*4+2];
+      gray[i] = 0.299*r + 0.587*g + 0.114*b;
+    }
+
+    // Sobel edge detection
+    const edges = new Float32Array(w * h);
+    let maxEdge = 0;
+
+    for (let y = 1; y < h-1; y++) {
+      for (let x = 1; x < w-1; x++) {
+        const idx = y * w + x;
+        const gx =
+          -gray[(y-1)*w+(x-1)] + gray[(y-1)*w+(x+1)]
+          -2*gray[y*w+(x-1)]   + 2*gray[y*w+(x+1)]
+          -gray[(y+1)*w+(x-1)] + gray[(y+1)*w+(x+1)];
+        const gy =
+          -gray[(y-1)*w+(x-1)] - 2*gray[(y-1)*w+x] - gray[(y-1)*w+(x+1)]
+          +gray[(y+1)*w+(x-1)] + 2*gray[(y+1)*w+x] + gray[(y+1)*w+(x+1)];
+        const mag = Math.sqrt(gx*gx + gy*gy);
+        edges[idx] = mag;
+        if (mag > maxEdge) maxEdge = mag;
+      }
+    }
+
+    // Normalize & threshold
+    const threshold = params.threshold;
+    const contrast = params.contrast || 1.0;
+    const isDark = currentBg === 'black';
+
+    const outCtx = outputCanvas.getContext('2d');
+    const out = outCtx.createImageData(w, h);
+    const outData = out.data;
+
+    for (let i = 0; i < w * h; i++) {
+      const norm = (edges[i] / maxEdge) * 255;
+      const adjusted = Math.min(255, norm * contrast);
+      let lineStrength = adjusted > threshold ? (adjusted - threshold) / (255 - threshold) : 0;
+      lineStrength = Math.min(1, lineStrength);
+
+      // Sketch style: add slight randomness
+      if (currentStyle === 'sketch' && lineStrength > 0) {
+        lineStrength = Math.min(1, lineStrength * (0.85 + Math.random() * 0.3));
+      }
+
+      if (isDark) {
+        // Dark background: white lines
+        const v = Math.round(lineStrength * 255);
+        outData[i*4]   = bg.r + (255 - bg.r) * lineStrength;
+        outData[i*4+1] = bg.g + (255 - bg.g) * lineStrength;
+        outData[i*4+2] = bg.b + (255 - bg.b) * lineStrength;
+        outData[i*4+3] = 255;
+      } else {
+        // Light background: dark lines
+        const v = Math.round((1 - lineStrength) * 255);
+        const inkMix = 26; // var(--ink) approx
+        outData[i*4]   = bg.r * (1-lineStrength) + inkMix * lineStrength;
+        outData[i*4+1] = bg.g * (1-lineStrength) + inkMix * lineStrength;
+        outData[i*4+2] = bg.b * (1-lineStrength) + inkMix * lineStrength;
+        outData[i*4+3] = 255;
+      }
+    }
+
+    outCtx.putImageData(out, 0, 0);
+  }
+
+  // Download (transparent bg — just lines)
+  document.getElementById('downloadBtn').addEventListener('click', () => {
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = outputCanvas.width;
+    tempCanvas.height = outputCanvas.height;
+    const tCtx = tempCanvas.getContext('2d');
+    // Re-draw with alpha
+    const src = outputCanvas.getContext('2d').getImageData(0, 0, outputCanvas.width, outputCanvas.height);
+    const out = tCtx.createImageData(outputCanvas.width, outputCanvas.height);
+    const bg = getBgColor();
+    for (let i = 0; i < src.data.length / 4; i++) {
+      const r = src.data[i*4], g = src.data[i*4+1], b = src.data[i*4+2];
+      const diff = Math.abs(r - bg.r) + Math.abs(g - bg.g) + Math.abs(b - bg.b);
+      const alpha = Math.min(255, diff * 2);
+      out.data[i*4] = currentBg === 'black' ? 255 : 26;
+      out.data[i*4+1] = currentBg === 'black' ? 255 : 18;
+      out.data[i*4+2] = currentBg === 'black' ? 255 : 8;
+      out.data[i*4+3] = alpha;
+    }
+    tCtx.putImageData(out, 0, 0);
+    downloadCanvas(tempCanvas, 'lineart-transparent.png');
+  });
+
+  document.getElementById('downloadBgBtn').addEventListener('click', () => {
+    downloadCanvas(outputCanvas, 'lineart.png');
+  });
+
+  function downloadCanvas(canvas, filename) {
+    const link = document.createElement('a');
+    link.download = filename;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  }
+
+  document.getElementById('newBtn').addEventListener('click', () => {
+    loadedImage = null;
+    fileInput.value = '';
+    originalImg.src = '';
+    controls.classList.remove('visible');
+    canvasArea.classList.remove('visible');
+    actions.classList.remove('visible');
+    outputCanvas.width = 0; outputCanvas.height = 0;
+  });
+</script>
+</body>
+</html>
