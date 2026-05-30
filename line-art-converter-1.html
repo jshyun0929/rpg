@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>선화 변환기 · LineTrace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@300;400;600&family=Cormorant+Garamond:ital,wght@0,300;0,500;1,300&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --ink: #1a1208; --paper: #f5f0e8; --sepia: #c8a96e;
+    --faint: #e8e0d0; --accent: #8b5e3c; --soft: #d4c9b0;
+  }
+  body { background: var(--paper); color: var(--ink); font-family: 'Noto Serif KR', serif; min-height: 100vh; overflow-x: hidden; }
+  body::before { content: ''; position: fixed; inset: 0; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E"); pointer-events: none; z-index: 1000; opacity: 0.6; }
+  header { padding: 2.5rem 4rem 2rem; display: flex; align-items: baseline; gap: 1.5rem; border-bottom: 1px solid var(--soft); }
+  .logo { font-family: 'Cormorant Garamond', serif; font-size: 2.2rem; font-weight: 300; font-style: italic; letter-spacing: 0.02em; }
+  .logo span { color: var(--accent); }
+  .tagline { font-size: 0.75rem; font-weight: 300; color: var(--sepia); letter-spacing: 0.15em; text-transform: uppercase; }
+  main { max-width: 1200px; margin: 0 auto; padding: 2.5rem 2rem 5rem; }
+
+  /* API Key Section */
+  .api-section { background: white; border: 1px solid var(--faint); border-radius: 2px; padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+  .api-label { font-size: 0.7rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--sepia); white-space: nowrap; }
+  .api-input-wrap { flex: 1; min-width: 200px; position: relative; }
+  .api-input { width: 100%; padding: 0.5rem 0.75rem; border: 1px solid var(--soft); background: var(--paper); font-family: monospace; font-size: 0.8rem; color: var(--ink); outline: none; border-radius: 1px; transition: border-color 0.2s; }
+  .api-input:focus { border-color: var(--accent); }
+  .api-status { font-size: 0.7rem; letter-spacing: 0.08em; padding: 0.3rem 0.75rem; border-radius: 1px; white-space: nowrap; }
+  .api-status.ok { background: rgba(100,150,80,0.1); color: #4a7a30; border: 1px solid rgba(100,150,80,0.3); }
+  .api-status.empty { background: rgba(200,169,110,0.1); color: var(--sepia); border: 1px solid rgba(200,169,110,0.3); }
+  .api-note { font-size: 0.68rem; color: var(--sepia); opacity: 0.8; width: 100%; margin-top: -0.25rem; }
+
+  /* Upload Zone */
+  .upload-zone { border: 1.5px dashed var(--sepia); border-radius: 2px; padding: 3.5rem 2rem; text-align: center; cursor: pointer; transition: all 0.3s ease; background: linear-gradient(135deg, rgba(200,169,110,0.04), transparent); position: relative; overflow: hidden; }
+  .upload-zone::before { content: ''; position: absolute; inset: 6px; border: 1px solid rgba(200,169,110,0.2); border-radius: 1px; pointer-events: none; }
+  .upload-zone:hover, .upload-zone.drag-over { border-color: var(--accent); background: rgba(139,94,60,0.04); }
+  .upload-icon { width: 52px; height: 52px; margin: 0 auto 1.25rem; opacity: 0.4; }
+  .upload-text-main { font-family: 'Cormorant Garamond', serif; font-size: 1.35rem; font-weight: 300; margin-bottom: 0.4rem; }
+  .upload-text-sub { font-size: 0.72rem; color: var(--sepia); letter-spacing: 0.1em; text-transform: uppercase; }
+  #fileInput { display: none; }
+
+  /* AI Analyze Button */
+  .ai-bar { display: none; margin: 1.25rem 0 0; align-items: center; gap: 1rem; background: linear-gradient(135deg, rgba(139,94,60,0.06), rgba(200,169,110,0.04)); border: 1px solid rgba(200,169,110,0.3); border-radius: 2px; padding: 1rem 1.25rem; }
+  .ai-bar.visible { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+  .ai-desc { font-size: 0.75rem; color: var(--sepia); flex: 1; min-width: 150px; line-height: 1.5; }
+  .ai-desc strong { color: var(--accent); display: block; font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.15rem; }
+  .btn-ai { padding: 0.55rem 1.25rem; background: var(--accent); color: var(--paper); border: none; font-family: 'Noto Serif KR', serif; font-size: 0.75rem; cursor: pointer; border-radius: 1px; letter-spacing: 0.08em; transition: all 0.25s; white-space: nowrap; }
+  .btn-ai:hover { background: var(--ink); }
+  .btn-ai:disabled { opacity: 0.5; cursor: not-allowed; }
+  .ai-result { font-size: 0.72rem; color: var(--ink); line-height: 1.6; width: 100%; background: white; padding: 0.75rem 1rem; border-radius: 1px; border-left: 2px solid var(--sepia); display: none; }
+  .ai-result.visible { display: block; }
+
+  /* Controls */
+  .controls { display: none; margin: 1.25rem 0 0; background: white; border: 1px solid var(--faint); border-radius: 2px; padding: 1.5rem; }
+  .controls.visible { display: block; }
+  .controls-title { font-size: 0.7rem; font-weight: 500; letter-spacing: 0.2em; text-transform: uppercase; color: var(--sepia); margin-bottom: 1.25rem; padding-bottom: 0.6rem; border-bottom: 1px solid var(--faint); }
+  .control-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1.25rem 2rem; }
+  .control-item label { display: block; font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin-bottom: 0.5rem; }
+  .slider-wrap { display: flex; align-items: center; gap: 0.75rem; }
+  input[type=range] { -webkit-appearance: none; flex: 1; height: 2px; background: var(--soft); outline: none; cursor: pointer; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%; background: var(--accent); cursor: pointer; box-shadow: 0 0 0 3px rgba(139,94,60,0.15); transition: box-shadow 0.2s; }
+  input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 5px rgba(139,94,60,0.2); }
+  .slider-val { font-family: 'Cormorant Garamond', serif; font-size: 1rem; color: var(--ink); min-width: 2rem; text-align: right; }
+  .style-options { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .style-btn { padding: 0.35rem 0.85rem; border: 1px solid var(--soft); background: transparent; font-family: 'Noto Serif KR', serif; font-size: 0.72rem; color: var(--ink); cursor: pointer; border-radius: 1px; letter-spacing: 0.04em; transition: all 0.2s; }
+  .style-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .style-btn.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+  /* Algorithm selector */
+  .algo-tabs { display: flex; gap: 0; border: 1px solid var(--soft); border-radius: 1px; overflow: hidden; width: fit-content; }
+  .algo-tab { padding: 0.35rem 1rem; border: none; background: transparent; font-family: 'Noto Serif KR', serif; font-size: 0.72rem; color: var(--sepia); cursor: pointer; letter-spacing: 0.04em; transition: all 0.2s; border-right: 1px solid var(--soft); }
+  .algo-tab:last-child { border-right: none; }
+  .algo-tab:hover { background: var(--faint); color: var(--ink); }
+  .algo-tab.active { background: var(--ink); color: var(--paper); }
+
+  /* Canvas Area */
+  .canvas-area { display: none; gap: 1.5rem; margin-top: 1.25rem; }
+  .canvas-area.visible { display: grid; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 700px) { .canvas-area.visible { grid-template-columns: 1fr; } header { padding: 1.5rem; } }
+  .canvas-panel { display: flex; flex-direction: column; gap: 0.6rem; }
+  .panel-label { font-size: 0.68rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--sepia); }
+  .canvas-frame { border: 1px solid var(--faint); background: white; display: flex; align-items: center; justify-content: center; min-height: 280px; overflow: hidden; position: relative; }
+  .canvas-frame canvas, .canvas-frame img { max-width: 100%; max-height: 480px; display: block; object-fit: contain; }
+  .processing-overlay { display: none; position: absolute; inset: 0; background: rgba(245,240,232,0.92); align-items: center; justify-content: center; flex-direction: column; gap: 0.75rem; z-index: 10; }
+  .processing-overlay.active { display: flex; }
+  .spinner { width: 32px; height: 32px; border: 2px solid var(--faint); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .processing-text { font-size: 0.7rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--sepia); }
+
+  /* Actions */
+  .actions { display: none; gap: 1rem; margin-top: 1.5rem; justify-content: center; flex-wrap: wrap; }
+  .actions.visible { display: flex; }
+  .btn { padding: 0.65rem 1.75rem; border: 1px solid var(--ink); background: transparent; font-family: 'Noto Serif KR', serif; font-size: 0.78rem; color: var(--ink); cursor: pointer; letter-spacing: 0.08em; transition: all 0.25s; border-radius: 1px; }
+  .btn:hover { background: var(--ink); color: var(--paper); }
+  .btn-primary { background: var(--ink); color: var(--paper); }
+  .btn-primary:hover { background: var(--accent); border-color: var(--accent); }
+  .btn-ghost { border-color: var(--soft); color: var(--sepia); }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); background: transparent; }
+  .corner-deco { position: fixed; width: 50px; height: 50px; opacity: 0.1; }
+  .corner-deco.tl { top: 1rem; left: 1rem; border-top: 1px solid var(--ink); border-left: 1px solid var(--ink); }
+  .corner-deco.br { bottom: 1rem; right: 1rem; border-bottom: 1px solid var(--ink); border-right: 1px solid var(--ink); }
+
+  /* AI highlight on sliders */
+  .slider-wrap.ai-suggested input[type=range] { background: linear-gradient(to right, rgba(139,94,60,0.4), rgba(200,169,110,0.2)); }
+</style>
+</head>
+<body>
+<div class="corner-deco tl"></div>
+<div class="corner-deco br"></div>
+
+<header>
+  <div class="logo">Line<span>Trace</span></div>
+  <div class="tagline">이미지 → 선화 변환기</div>
+</header>
+
+<main>
+  <!-- API Key -->
+  <div class="api-section">
+    <div class="api-label">Anthropic API Key</div>
+    <div class="api-input-wrap">
+      <input type="password" class="api-input" id="apiKey" placeholder="sk-ant-api03-..." autocomplete="off">
+    </div>
+    <div class="api-status empty" id="apiStatus">미입력</div>
+    <div class="api-note">API 키는 브라우저에만 저장되며 서버로 전송되지 않습니다. Claude가 이미지를 분석해 최적 파라미터를 자동 추천합니다.</div>
+  </div>
+
+  <!-- Upload Zone -->
+  <div class="upload-zone" id="uploadZone">
+    <input type="file" id="fileInput" accept="image/*">
+    <svg class="upload-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.2">
+      <rect x="6" y="8" width="36" height="32" rx="2"/>
+      <circle cx="18" cy="20" r="4"/>
+      <path d="M6 34 l10-10 8 8 6-6 12 10"/>
+      <path d="M24 6 v8 M20 9 l4-4 4 4" stroke-linecap="round"/>
+    </svg>
+    <div class="upload-text-main">이미지를 드래그하거나 클릭하세요</div>
+    <div class="upload-text-sub">JPG · PNG · WEBP 지원</div>
+  </div>
+
+  <!-- AI Bar -->
+  <div class="ai-bar" id="aiBar">
+    <div class="ai-desc">
+      <strong>✦ AI 파라미터 분석</strong>
+      Claude가 이미지를 분석하여 최적의 선화 설정을 자동으로 추천합니다.
+    </div>
+    <button class="btn-ai" id="aiAnalyzeBtn">AI 분석 시작</button>
+    <div class="ai-result" id="aiResult"></div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls" id="controls">
+    <div class="controls-title">변환 설정</div>
+    <div class="control-grid">
+      <div class="control-item">
+        <label>알고리즘</label>
+        <div class="algo-tabs">
+          <button class="algo-tab active" data-algo="canny">Canny</button>
+          <button class="algo-tab" data-algo="sobel">Sobel</button>
+          <button class="algo-tab" data-algo="xdog">XDoG</button>
+        </div>
+      </div>
+      <div class="control-item">
+        <label>감도 (Low Threshold)</label>
+        <div class="slider-wrap" id="wrapLow">
+          <input type="range" id="lowThresh" min="5" max="150" value="30">
+          <span class="slider-val" id="lowVal">30</span>
+        </div>
+      </div>
+      <div class="control-item">
+        <label>강도 (High Threshold)</label>
+        <div class="slider-wrap" id="wrapHigh">
+          <input type="range" id="highThresh" min="20" max="250" value="90">
+          <span class="slider-val" id="highVal">90</span>
+        </div>
+      </div>
+      <div class="control-item">
+        <label>가우시안 블러</label>
+        <div class="slider-wrap">
+          <input type="range" id="blur" min="0" max="4" value="1" step="0.5">
+          <span class="slider-val" id="blurVal">1</span>
+        </div>
+      </div>
+      <div class="control-item">
+        <label>선 세밀도</label>
+        <div class="slider-wrap">
+          <input type="range" id="lineDetail" min="1" max="10" value="5">
+          <span class="slider-val" id="lineDetailVal">5</span>
+        </div>
+      </div>
+      <div class="control-item">
+        <label>배경</label>
+        <div class="style-options">
+          <button class="style-btn active" data-bg="white">흰색</button>
+          <button class="style-btn" data-bg="paper">종이</button>
+          <button class="style-btn" data-bg="black">검정</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Canvas Area -->
+  <div class="canvas-area" id="canvasArea">
+    <div class="canvas-panel">
+      <div class="panel-label">원본</div>
+      <div class="canvas-frame">
+        <img id="originalImg" src="" alt="원본 이미지">
+      </div>
+    </div>
+    <div class="canvas-panel">
+      <div class="panel-label">선화 결과</div>
+      <div class="canvas-frame">
+        <canvas id="outputCanvas"></canvas>
+        <div class="processing-overlay" id="processingOverlay">
+          <div class="spinner"></div>
+          <div class="processing-text" id="processingText">변환 중...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="actions" id="actions">
+    <button class="btn btn-primary" id="downloadBtn">PNG 저장 (투명배경)</button>
+    <button class="btn" id="downloadBgBtn">PNG 저장 (배경포함)</button>
+    <button class="btn btn-ghost" id="newBtn">새 이미지</button>
+  </div>
+</main>
+
+<canvas id="workCanvas" style="display:none"></canvas>
+<canvas id="blurCanvas" style="display:none"></canvas>
+
+<script>
+const $ = id => document.getElementById(id);
+const uploadZone = $('uploadZone'), fileInput = $('fileInput');
+const controls = $('controls'), canvasArea = $('canvasArea'), actions = $('actions');
+const originalImg = $('originalImg'), outputCanvas = $('outputCanvas');
+const workCanvas = $('workCanvas'), blurCanvas = $('blurCanvas');
+const processingOverlay = $('processingOverlay'), processingText = $('processingText');
+const aiBar = $('aiBar'), aiResult = $('aiResult');
+
+let loadedImage = null, currentAlgo = 'canny', currentBg = 'white';
+let base64ImageData = null;
+
+// API Key
+$('apiKey').addEventListener('input', () => {
+  const v = $('apiKey').value.trim();
+  const s = $('apiStatus');
+  if (v.startsWith('sk-ant-')) { s.textContent = '입력됨 ✓'; s.className = 'api-status ok'; }
+  else { s.textContent = '미입력'; s.className = 'api-status empty'; }
+});
+
+// Upload
+uploadZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => loadImage(e.target.files[0]));
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault(); uploadZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('image/')) loadImage(f);
+});
+
+function loadImage(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    base64ImageData = e.target.result.split(',')[1];
+    const img = new Image();
+    img.onload = () => {
+      loadedImage = img;
+      originalImg.src = e.target.result;
+      controls.classList.add('visible');
+      canvasArea.classList.add('visible');
+      actions.classList.add('visible');
+      aiBar.classList.add('visible');
+      aiResult.classList.remove('visible');
+      convertToLineArt();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// Sliders
+function bindSlider(id, valId, cb) {
+  $(id).addEventListener('input', () => { $(valId).textContent = $(id).value; if(loadedImage) { debounceConvert(); } });
+}
+bindSlider('lowThresh','lowVal'); bindSlider('highThresh','highVal');
+bindSlider('blur','blurVal'); bindSlider('lineDetail','lineDetailVal');
+
+// Algo tabs
+document.querySelectorAll('.algo-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.algo-tab').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active'); currentAlgo = btn.dataset.algo;
+    if(loadedImage) debounceConvert();
+  });
+});
+
+// BG buttons
+document.querySelectorAll('.style-btn[data-bg]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.style-btn[data-bg]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active'); currentBg = btn.dataset.bg;
+    if(loadedImage) debounceConvert();
+  });
+});
+
+// --- CANNY EDGE DETECTION ---
+function gaussianKernel(sigma, size) {
+  const k = [];
+  const half = Math.floor(size/2);
+  let sum = 0;
+  for(let y=-half; y<=half; y++) {
+    for(let x=-half; x<=half; x++) {
+      const v = Math.exp(-(x*x+y*y)/(2*sigma*sigma));
+      k.push(v); sum += v;
+    }
+  }
+  return k.map(v=>v/sum);
+}
+
+function applyKernel(src, w, h, kernel, ksize) {
+  const half = Math.floor(ksize/2);
+  const out = new Float32Array(w*h);
+  for(let y=0; y<h; y++) {
+    for(let x=0; x<w; x++) {
+      let v = 0;
+      for(let ky=0; ky<ksize; ky++) {
+        for(let kx=0; kx<ksize; kx++) {
+          const sy = Math.min(Math.max(y+ky-half,0),h-1);
+          const sx = Math.min(Math.max(x+kx-half,0),w-1);
+          v += src[sy*w+sx] * kernel[ky*ksize+kx];
+        }
+      }
+      out[y*w+x] = v;
+    }
+  }
+  return out;
+}
+
+function cannyEdge(gray, w, h, lowT, highT, sigma) {
+  const ksize = Math.max(3, Math.ceil(sigma*3)*2+1);
+  const kernel = gaussianKernel(sigma, ksize);
+  const blurred = applyKernel(gray, w, h, kernel, ksize);
+
+  // Sobel
+  const Gx = new Float32Array(w*h), Gy = new Float32Array(w*h);
+  const mag = new Float32Array(w*h), ang = new Float32Array(w*h);
+  for(let y=1;y<h-1;y++) {
+    for(let x=1;x<w-1;x++) {
+      const i = y*w+x;
+      const gx = -blurred[(y-1)*w+(x-1)] + blurred[(y-1)*w+(x+1)]
+                 -2*blurred[y*w+(x-1)]   + 2*blurred[y*w+(x+1)]
+                 -blurred[(y+1)*w+(x-1)] + blurred[(y+1)*w+(x+1)];
+      const gy = -blurred[(y-1)*w+(x-1)] - 2*blurred[(y-1)*w+x] - blurred[(y-1)*w+(x+1)]
+                 +blurred[(y+1)*w+(x-1)] + 2*blurred[(y+1)*w+x] + blurred[(y+1)*w+(x+1)];
+      Gx[i]=gx; Gy[i]=gy;
+      mag[i]=Math.sqrt(gx*gx+gy*gy);
+      ang[i]=Math.atan2(gy,gx)*180/Math.PI;
+    }
+  }
+
+  // Non-maximum suppression
+  const nms = new Float32Array(w*h);
+  for(let y=1;y<h-1;y++) {
+    for(let x=1;x<w-1;x++) {
+      const i=y*w+x;
+      let a=ang[i]; if(a<0) a+=180;
+      let q,r;
+      if((a>=0&&a<22.5)||(a>=157.5)) { q=mag[y*w+(x+1)]; r=mag[y*w+(x-1)]; }
+      else if(a>=22.5&&a<67.5) { q=mag[(y+1)*w+(x-1)]; r=mag[(y-1)*w+(x+1)]; }
+      else if(a>=67.5&&a<112.5) { q=mag[(y+1)*w+x]; r=mag[(y-1)*w+x]; }
+      else { q=mag[(y-1)*w+(x-1)]; r=mag[(y+1)*w+(x+1)]; }
+      nms[i] = (mag[i]>=q && mag[i]>=r) ? mag[i] : 0;
+    }
+  }
+
+  // Double threshold + hysteresis
+  const out = new Uint8Array(w*h);
+  const strong=255, weak=128;
+  for(let i=0;i<w*h;i++) {
+    if(nms[i]>=highT) out[i]=strong;
+    else if(nms[i]>=lowT) out[i]=weak;
+  }
+  // Hysteresis
+  for(let y=1;y<h-1;y++) {
+    for(let x=1;x<w-1;x++) {
+      if(out[y*w+x]===weak) {
+        if(out[(y-1)*w+(x-1)]===strong||out[(y-1)*w+x]===strong||out[(y-1)*w+(x+1)]===strong||
+           out[y*w+(x-1)]===strong||out[y*w+(x+1)]===strong||
+           out[(y+1)*w+(x-1)]===strong||out[(y+1)*w+x]===strong||out[(y+1)*w+(x+1)]===strong)
+          out[y*w+x]=strong;
+        else out[y*w+x]=0;
+      }
+    }
+  }
+  return out;
+}
+
+// XDoG (Extended Difference of Gaussians - manga/sketch style)
+function xdogEdge(gray, w, h, sigma, k, p, eps, phi) {
+  const k1 = gaussianKernel(sigma, Math.max(3,Math.ceil(sigma*3)*2+1));
+  const k2 = gaussianKernel(sigma*k, Math.max(3,Math.ceil(sigma*k*3)*2+1));
+  const ksize1 = Math.max(3,Math.ceil(sigma*3)*2+1);
+  const ksize2 = Math.max(3,Math.ceil(sigma*k*3)*2+1);
+  const g1 = applyKernel(gray, w, h, k1, ksize1);
+  const g2 = applyKernel(gray, w, h, k2, ksize2);
+  const out = new Uint8Array(w*h);
+  for(let i=0;i<w*h;i++) {
+    const dog = g1[i] - (1+p)*g2[i] + p*gray[i];
+    // Thresholding
+    if(dog >= eps) out[i] = 255;
+    else out[i] = Math.round(255 * (1 + Math.tanh(phi * (dog - eps))));
+  }
+  return out;
+}
+
+// Sobel (improved)
+function sobelEdge(gray, w, h, threshold, blur) {
+  const ksize = blur > 0 ? Math.max(3, Math.ceil(blur*3)*2+1) : 0;
+  const blurred = blur > 0 ? applyKernel(gray, w, h, gaussianKernel(blur, ksize), ksize) : gray;
+  const mag = new Float32Array(w*h);
+  let maxMag=0;
+  for(let y=1;y<h-1;y++) {
+    for(let x=1;x<w-1;x++) {
+      const gx = -blurred[(y-1)*w+(x-1)] + blurred[(y-1)*w+(x+1)]
+                 -2*blurred[y*w+(x-1)] + 2*blurred[y*w+(x+1)]
+                 -blurred[(y+1)*w+(x-1)] + blurred[(y+1)*w+(x+1)];
+      const gy = -blurred[(y-1)*w+(x-1)] - 2*blurred[(y-1)*w+x] - blurred[(y-1)*w+(x+1)]
+                 +blurred[(y+1)*w+(x-1)] + 2*blurred[(y+1)*w+x] + blurred[(y+1)*w+(x+1)];
+      const m = Math.sqrt(gx*gx+gy*gy);
+      mag[y*w+x]=m; if(m>maxMag) maxMag=m;
+    }
+  }
+  const out = new Uint8Array(w*h);
+  for(let i=0;i<w*h;i++) {
+    const n = (mag[i]/maxMag)*255;
+    out[i] = n > threshold ? Math.min(255, Math.round((n-threshold)/(255-threshold)*255)) : 0;
+  }
+  return out;
+}
+
+function getBgRGB() {
+  if(currentBg==='paper') return [245,240,232];
+  if(currentBg==='black') return [10,10,10];
+  return [255,255,255];
+}
+
+let debTimer = null;
+function debounceConvert() {
+  clearTimeout(debTimer);
+  processingOverlay.classList.add('active');
+  debTimer = setTimeout(() => requestAnimationFrame(()=>{ doConvert(); processingOverlay.classList.remove('active'); }), 80);
+}
+function convertToLineArt() { debounceConvert(); }
+
+function doConvert() {
+  const img = loadedImage;
+  const maxW=1400, maxH=1400;
+  let w=img.naturalWidth, h=img.naturalHeight;
+  if(w>maxW){h=h*maxW/w;w=maxW;} if(h>maxH){w=w*maxH/h;h=maxH;}
+  w=Math.round(w); h=Math.round(h);
+
+  workCanvas.width=w; workCanvas.height=h;
+  outputCanvas.width=w; outputCanvas.height=h;
+  const wCtx=workCanvas.getContext('2d');
+  wCtx.drawImage(img,0,0,w,h);
+  const src=wCtx.getImageData(0,0,w,h).data;
+
+  // To grayscale
+  const gray=new Float32Array(w*h);
+  for(let i=0;i<w*h;i++) gray[i]=0.299*src[i*4]+0.587*src[i*4+1]+0.114*src[i*4+2];
+
+  const lowT = parseFloat($('lowThresh').value);
+  const highT = parseFloat($('highThresh').value);
+  const blurV = parseFloat($('blur').value);
+  const detail = parseFloat($('lineDetail').value);
+  const sigma = Math.max(0.5, blurV);
+
+  let edges;
+  if(currentAlgo==='canny') {
+    edges = cannyEdge(gray, w, h, lowT, highT, sigma);
+  } else if(currentAlgo==='xdog') {
+    // Map sliders to XDoG params
+    const p = detail * 8;  // sharpness
+    const eps = 200 - highT; // threshold
+    const phi = 0.5 + detail*0.3;
+    edges = xdogEdge(gray, w, h, sigma, 1.6, p, eps, phi);
+    // Invert for line drawing
+    for(let i=0;i<edges.length;i++) edges[i] = 255-edges[i];
+  } else {
+    edges = sobelEdge(gray, w, h, lowT, blurV);
+  }
+
+  const bg = getBgRGB();
+  const isDark = currentBg==='black';
+  const outCtx=outputCanvas.getContext('2d');
+  const out=outCtx.createImageData(w,h);
+  const od=out.data;
+
+  for(let i=0;i<w*h;i++) {
+    const e=edges[i]/255;
+    if(isDark) {
+      od[i*4]=bg[0]+(255-bg[0])*e;
+      od[i*4+1]=bg[1]+(255-bg[1])*e;
+      od[i*4+2]=bg[2]+(255-bg[2])*e;
+    } else {
+      od[i*4]=bg[0]*(1-e)+26*e;
+      od[i*4+1]=bg[1]*(1-e)+18*e;
+      od[i*4+2]=bg[2]*(1-e)+8*e;
+    }
+    od[i*4+3]=255;
+  }
+  outCtx.putImageData(out,0,0);
+}
+
+// --- AI ANALYSIS ---
+$('aiAnalyzeBtn').addEventListener('click', async () => {
+  const apiKey = $('apiKey').value.trim();
+  if(!apiKey) { alert('Anthropic API 키를 먼저 입력해주세요.'); return; }
+  if(!loadedImage) return;
+
+  const btn = $('aiAnalyzeBtn');
+  btn.disabled=true; btn.textContent='분석 중...';
+  aiResult.classList.remove('visible');
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true'
+      },
+      body: JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:800,
+        messages:[{
+          role:'user',
+          content:[
+            { type:'image', source:{ type:'base64', media_type:'image/jpeg', data: base64ImageData }},
+            { type:'text', text:`이 이미지를 선화(line art)로 변환하려고 합니다. 다음 파라미터에 대한 최적값을 추천해주세요:
+
+1. 알고리즘: canny(사진/복잡한 이미지), xdog(만화/스케치 스타일), sobel(단순한 이미지) 중 하나
+2. 감도(lowThresh): 5~150 사이 정수
+3. 강도(highThresh): 20~250 사이 정수  
+4. 가우시안 블러: 0~4 사이 (0.5 단위)
+5. 선 세밀도: 1~10 사이 정수
+6. 배경: white / paper / black
+
+이미지의 특성(사진, 일러스트, 스케치 등)과 추천 이유를 간단히 설명하고, 아래 JSON 형식으로 답하세요:
+{"algo":"...", "lowThresh":..., "highThresh":..., "blur":..., "lineDetail":..., "bg":"...", "reason":"..."}`
+          }]
+        }]
+      })
+    });
+
+    const data = await response.json();
+    const text = data.content.map(c=>c.text||'').join('');
+    
+    // Parse JSON from response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if(jsonMatch) {
+      const params = JSON.parse(jsonMatch[0]);
+      
+      // Apply params
+      if(params.algo) {
+        document.querySelectorAll('.algo-tab').forEach(b=>b.classList.remove('active'));
+        document.querySelector(`.algo-tab[data-algo="${params.algo}"]`)?.classList.add('active');
+        currentAlgo = params.algo;
+      }
+      if(params.lowThresh) { $('lowThresh').value=params.lowThresh; $('lowVal').textContent=params.lowThresh; }
+      if(params.highThresh) { $('highThresh').value=params.highThresh; $('highVal').textContent=params.highThresh; }
+      if(params.blur!==undefined) { $('blur').value=params.blur; $('blurVal').textContent=params.blur; }
+      if(params.lineDetail) { $('lineDetail').value=params.lineDetail; $('lineDetailVal').textContent=params.lineDetail; }
+      if(params.bg) {
+        document.querySelectorAll('.style-btn[data-bg]').forEach(b=>b.classList.remove('active'));
+        document.querySelector(`.style-btn[data-bg="${params.bg}"]`)?.classList.add('active');
+        currentBg = params.bg;
+      }
+
+      aiResult.innerHTML = `<strong style="color:var(--accent);font-size:0.68rem;letter-spacing:0.1em;text-transform:uppercase;">AI 추천 결과</strong><br>${params.reason || '파라미터가 자동 적용되었습니다.'}`;
+      aiResult.classList.add('visible');
+      convertToLineArt();
+    } else {
+      aiResult.innerHTML = text;
+      aiResult.classList.add('visible');
+    }
+  } catch(err) {
+    aiResult.innerHTML = `오류: ${err.message}`;
+    aiResult.classList.add('visible');
+  }
+
+  btn.disabled=false; btn.textContent='AI 분석 시작';
+});
+
+// Download
+$('downloadBtn').addEventListener('click', () => {
+  const tmp=document.createElement('canvas');
+  tmp.width=outputCanvas.width; tmp.height=outputCanvas.height;
+  const tCtx=tmp.getContext('2d');
+  const src=outputCanvas.getContext('2d').getImageData(0,0,outputCanvas.width,outputCanvas.height);
+  const out=tCtx.createImageData(tmp.width,tmp.height);
+  const bg=getBgRGB();
+  for(let i=0;i<src.data.length/4;i++){
+    const r=src.data[i*4],g=src.data[i*4+1],b=src.data[i*4+2];
+    const diff=Math.abs(r-bg[0])+Math.abs(g-bg[1])+Math.abs(b-bg[2]);
+    const alpha=Math.min(255,diff*2.5);
+    out.data[i*4]=currentBg==='black'?255:26;
+    out.data[i*4+1]=currentBg==='black'?255:18;
+    out.data[i*4+2]=currentBg==='black'?255:8;
+    out.data[i*4+3]=alpha;
+  }
+  tCtx.putImageData(out,0,0);
+  const a=document.createElement('a'); a.download='lineart-transparent.png'; a.href=tmp.toDataURL('image/png'); a.click();
+});
+
+$('downloadBgBtn').addEventListener('click', () => {
+  const a=document.createElement('a'); a.download='lineart.png'; a.href=outputCanvas.toDataURL('image/png'); a.click();
+});
+
+$('newBtn').addEventListener('click', () => {
+  loadedImage=null; base64ImageData=null; fileInput.value=''; originalImg.src='';
+  controls.classList.remove('visible'); canvasArea.classList.remove('visible');
+  actions.classList.remove('visible'); aiBar.classList.remove('visible');
+  aiResult.classList.remove('visible');
+  outputCanvas.width=0; outputCanvas.height=0;
+});
+</script>
+</body>
+</html>
